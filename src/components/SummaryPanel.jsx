@@ -6,13 +6,20 @@ export function SummaryPanel({
   contractType,
   baseBlock,
   optionalBlocks,
+  onCreateContract,
 }) {
   if (!isOpen) return null;
 
   const hasBase = !!baseBlock;
 
+  const handleOverlayClick = (e) => {
+    if (e.target === e.currentTarget) {
+      onClose();
+    }
+  };
+
   return (
-    <div style={styles.overlay}>
+    <div style={styles.overlay} onClick={handleOverlayClick}>
       <div style={styles.panel}>
         <div style={styles.header}>
           <div>
@@ -131,6 +138,21 @@ export function SummaryPanel({
             </>
           )}
         </div>
+        {contractType && hasBase && (
+          <div style={styles.footer}>
+            <button
+              type="button"
+              style={styles.createButton}
+              onClick={() => {
+                if (onCreateContract) {
+                  onCreateContract();
+                }
+              }}
+            >
+              Create Smart Contract
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -142,11 +164,12 @@ const styles = {
     inset: 0,
     display: 'flex',
     justifyContent: 'center',
-    alignItems: 'flex-end',
+    alignItems: 'center',
     padding: '16px',
     boxSizing: 'border-box',
-    pointerEvents: 'none',
-    zIndex: 30,
+    background: 'rgba(15, 23, 42, 0.45)',
+    zIndex: 50,
+    cursor: 'pointer',
   },
   panel: {
     width: '960px',
@@ -154,11 +177,12 @@ const styles = {
     maxHeight: '90vh',
     background: '#f9fafb',
     borderRadius: '14px',
-    boxShadow: '0 24px 60px rgba(15,23,42,0.45)',
+    boxShadow: '0 24px 60px rgba(15,23,42,0.5)',
     overflow: 'hidden',
     pointerEvents: 'auto',
     display: 'flex',
     flexDirection: 'column',
+    cursor: 'default',
   },
   header: {
     padding: '16px 20px',
@@ -215,6 +239,30 @@ const styles = {
   },
   listItem: {
     marginBottom: '4px',
+  },
+  footer: {
+    padding: '16px 20px',
+    borderTop: '1px solid #e5e7eb',
+    display: 'flex',
+    justifyContent: 'flex-end',
+    background: '#ffffff',
+  },
+  createButton: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: '6px',
+    borderRadius: '999px',
+    border: '1px solid #1d4ed8',
+    padding: '10px 20px',
+    fontSize: '14px',
+    fontWeight: 600,
+    cursor: 'pointer',
+    backgroundColor: '#2563eb',
+    color: '#ffffff',
+    boxShadow: '0 8px 18px rgba(37, 99, 235, 0.35)',
+    transition:
+      'background-color 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease, transform 0.08s ease',
   },
 };
 

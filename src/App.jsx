@@ -4,10 +4,12 @@ import { Sidebar } from './components/Sidebar.jsx';
 import { Canvas } from './components/Canvas.jsx';
 import { BlockSettingsPanel } from './components/BlockSettingsPanel.jsx';
 import { SummaryPanel } from './components/SummaryPanel.jsx';
+import { MySmartContracts } from './components/MySmartContracts.jsx';
 import { CONTRACT_TYPES } from './constants.js';
-import { useLocalLayout } from './hooks.js';
+import { useLocalLayout, useCreatedContracts } from './hooks.js';
 
 export default function App() {
+  const [activeTab, setActiveTab] = useState(null); // null for create flow, 'my-contracts' for contracts list
   const [contractType, setContractType] = useState(null);
   const [baseBlock, setBaseBlock] = useState(null);
   const [optionalBlocks, setOptionalBlocks] = useState([]);
@@ -15,8 +17,10 @@ export default function App() {
   const [message, setMessage] = useState('');
   const [isSummaryOpen, setSummaryOpen] = useState(false);
   const [isBackConfirmOpen, setBackConfirmOpen] = useState(false);
+  const [isSuccessOpen, setSuccessOpen] = useState(false);
 
   const { savedLayout, saveLayout } = useLocalLayout();
+  const { contracts, saveContract, deleteContract } = useCreatedContracts();
 
   const handleSelectContractType = (type) => {
     setContractType(type);
@@ -158,6 +162,30 @@ export default function App() {
     setMessage('Saved layout loaded.');
   };
 
+  const handleCreateContract = () => {
+    if (!contractType || !baseBlock) {
+      setMessage('Cannot create contract: base block is required.');
+      return;
+    }
+    const success = saveContract({
+      contractType,
+      baseBlock,
+      optionalBlocks,
+    });
+    if (success) {
+      setSummaryOpen(false);
+      setSuccessOpen(true);
+      // Clear the canvas
+      setContractType(null);
+      setBaseBlock(null);
+      setOptionalBlocks([]);
+      setSelectedBlockId(null);
+      setMessage('Smart contract created! Start by choosing a contract type to create another.');
+    } else {
+      setMessage('Failed to save contract. Check your browser storage settings.');
+    }
+  };
+
   const selectedBlock =
     optionalBlocks.find((b) => b.id === selectedBlockId) || null;
 
@@ -165,15 +193,51 @@ export default function App() {
     <div style={styles.app}>
       <header style={styles.header}>
         <div style={styles.headerLeft}>
-          {contractType && (
-            <button
-              type="button"
-              style={{ ...styles.headerButton, ...styles.headerButtonGhost, ...styles.backButton }}
-              onClick={handleBackToSelection}
-            >
-              ← Back
-            </button>
-          )}
+          {(() => {
+            // Show back button on contract creation page
+            if (contractType && activeTab !== 'my-contracts') {
+              return (
+                <button
+                  type="button"
+                  style={{ ...styles.headerButton, ...styles.headerButtonGhost, ...styles.backButton }}
+                  onClick={handleBackToSelection}
+                >
+                  ← Back
+                </button>
+              );
+            }
+            // Show back button on My Smart Contracts page
+            if (activeTab === 'my-contracts') {
+              return (
+                <button
+                  type="button"
+                  style={{ ...styles.headerButton, ...styles.headerButtonGhost, ...styles.backButton }}
+                  onClick={() => {
+                    setActiveTab(null);
+                    setMessage('Start by choosing a contract type.');
+                  }}
+                >
+                  ← Back
+                </button>
+              );
+            }
+            // Show back button on home page if there are contracts
+            if (!contractType && activeTab !== 'my-contracts' && contracts.length > 0) {
+              return (
+                <button
+                  type="button"
+                  style={{ ...styles.headerButton, ...styles.headerButtonGhost, ...styles.backButton }}
+                  onClick={() => {
+                    setActiveTab('my-contracts');
+                    setMessage('');
+                  }}
+                >
+                  ← My Contracts
+                </button>
+              );
+            }
+            return null;
+          })()}
           <div>
             <div style={styles.appName}>Smart Contract Creator</div>
             <div style={styles.appTagline}>
@@ -181,7 +245,27 @@ export default function App() {
             </div>
           </div>
         </div>
-        {contractType && (
+        {!contractType && (
+          <div style={styles.headerTabs}>
+            <button
+              type="button"
+              style={{
+                ...styles.tabButton,
+                ...(activeTab === 'my-contracts' ? styles.tabButtonActive : {}),
+              }}
+              onClick={() => {
+                setActiveTab('my-contracts');
+                setMessage('');
+              }}
+            >
+              My Smart Contracts
+              {contracts.length > 0 && (
+                <span style={styles.tabBadge}>{contracts.length}</span>
+              )}
+            </button>
+          </div>
+        )}
+        {contractType && activeTab !== 'my-contracts' && (
           <div style={styles.headerActions}>
             <button
               type="button"
@@ -202,48 +286,65 @@ export default function App() {
         )}
       </header>
 
-      {!contractType && (
-        <ContractTypeSelector
-          selectedType={contractType}
-          onSelect={handleSelectContractType}
-        />
+      {activeTab !== 'my-contracts' && (
+        <>
+          {!contractType && (
+            <ContractTypeSelector
+              selectedType={contractType}
+              onSelect={handleSelectContractType}
+            />
+          )}
+
+          {contractType && (
+            <main style={styles.main}>
+              <Sidebar
+                contractType={contractType}
+                hasBaseBlock={!!baseBlock}
+                onStartDragBase={() => setMessage('Dragging base block...')}
+                onStartDragOptional={() => setMessage('Dragging optional block...')}
+                draggingEnabled
+                onShowBlockedMessage={setMessage}
+              />
+              <Canvas
+                contractType={contractType}
+                baseBlock={baseBlock}
+                optionalBlocks={optionalBlocks}
+                onDropFromSidebar={handleDropFromSidebar}
+                onSelectOptionalBlock={setSelectedBlockId}
+                onReorderOptionalBlock={handleReorderOptionalBlock}
+                onAttemptMoveBase={() =>
+                  setMessage('The base block cannot be moved or removed in this prototype.')
+                }
+                onUpdateBaseFields={(patch) =>
+                  setBaseBlock((prev) =>
+                    prev
+                      ? { ...prev, fields: { ...prev.fields, ...patch } }
+                      : prev,
+                  )
+                }
+                onDeleteOptionalBlock={(blockId) => {
+                  const found = optionalBlocks.find((b) => b.id === blockId);
+                  setOptionalBlocks((prev) => prev.filter((b) => b.id !== blockId));
+                  setMessage(
+                    found
+                      ? `Removed "${found.title}" from the canvas.`
+                      : 'Block removed.',
+                  );
+                }}
+              />
+            </main>
+          )}
+        </>
       )}
 
-      {contractType && (
+      {activeTab === 'my-contracts' && (
         <main style={styles.main}>
-          <Sidebar
-            contractType={contractType}
-            hasBaseBlock={!!baseBlock}
-            onStartDragBase={() => setMessage('Dragging base block...')}
-            onStartDragOptional={() => setMessage('Dragging optional block...')}
-            draggingEnabled
-            onShowBlockedMessage={setMessage}
-          />
-          <Canvas
-            contractType={contractType}
-            baseBlock={baseBlock}
-            optionalBlocks={optionalBlocks}
-            onDropFromSidebar={handleDropFromSidebar}
-            onSelectOptionalBlock={setSelectedBlockId}
-            onReorderOptionalBlock={handleReorderOptionalBlock}
-            onAttemptMoveBase={() =>
-              setMessage('The base block cannot be moved or removed in this prototype.')
-            }
-            onUpdateBaseFields={(patch) =>
-              setBaseBlock((prev) =>
-                prev
-                  ? { ...prev, fields: { ...prev.fields, ...patch } }
-                  : prev,
-              )
-            }
-            onDeleteOptionalBlock={(blockId) => {
-              const found = optionalBlocks.find((b) => b.id === blockId);
-              setOptionalBlocks((prev) => prev.filter((b) => b.id !== blockId));
-              setMessage(
-                found
-                  ? `Removed “${found.title}” from the canvas.`
-                  : 'Block removed.',
-              );
+          <MySmartContracts
+            contracts={contracts}
+            onDeleteContract={deleteContract}
+            onBackToHome={() => {
+              setActiveTab(null);
+              setMessage('Start by choosing a contract type.');
             }}
           />
         </main>
@@ -268,6 +369,7 @@ export default function App() {
         contractType={contractType}
         baseBlock={baseBlock}
         optionalBlocks={optionalBlocks}
+        onCreateContract={handleCreateContract}
       />
 
       {isBackConfirmOpen && (
@@ -310,6 +412,48 @@ export default function App() {
                 }}
               >
                 Clear canvas & go back
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {isSuccessOpen && (
+        <div style={styles.modalOverlay}>
+          <div style={styles.modalCard}>
+            <div style={styles.modalHeader}>
+              <div style={styles.modalTitle}>Success!</div>
+              <button
+                type="button"
+                style={styles.modalClose}
+                onClick={() => setSuccessOpen(false)}
+              >
+                ×
+              </button>
+            </div>
+            <div style={styles.modalBody}>
+              <div style={styles.successIcon}>✓</div>
+              <p style={styles.successMessage}>
+                Smart contract created successfully! You can view it in "My Smart Contracts".
+              </p>
+            </div>
+            <div style={styles.modalActionsCentered}>
+              <button
+                type="button"
+                style={styles.modalSuccessPrimary}
+                onClick={() => {
+                  setSuccessOpen(false);
+                  setActiveTab('my-contracts');
+                }}
+              >
+                View My Contracts
+              </button>
+              <button
+                type="button"
+                style={styles.modalSecondary}
+                onClick={() => setSuccessOpen(false)}
+              >
+                Continue Creating
               </button>
             </div>
           </div>
@@ -378,6 +522,46 @@ const styles = {
   appTagline: {
     fontSize: '12px',
     color: '#6b7280',
+  },
+  headerTabs: {
+    display: 'flex',
+    gap: '4px',
+    alignItems: 'center',
+  },
+  tabButton: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: '6px',
+    borderRadius: '999px',
+    border: '1px solid transparent',
+    padding: '6px 14px',
+    fontSize: '12px',
+    fontWeight: 500,
+    cursor: 'pointer',
+    backgroundColor: 'transparent',
+    borderColor: '#c7d2fe',
+    color: '#1e3a8a',
+    transition:
+      'background-color 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease',
+  },
+  tabButtonActive: {
+    backgroundColor: '#2563eb',
+    borderColor: '#1d4ed8',
+    color: '#ffffff',
+    boxShadow: '0 4px 12px rgba(37, 99, 235, 0.25)',
+  },
+  tabBadge: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    minWidth: '18px',
+    height: '18px',
+    padding: '0 6px',
+    borderRadius: '999px',
+    backgroundColor: 'rgba(255, 255, 255, 0.3)',
+    fontSize: '10px',
+    fontWeight: 600,
   },
   headerActions: {
     display: 'flex',
@@ -490,6 +674,11 @@ const styles = {
     justifyContent: 'flex-end',
     gap: '8px',
   },
+  modalActionsCentered: {
+    display: 'flex',
+    justifyContent: 'center',
+    gap: '8px',
+  },
   modalPrimary: {
     padding: '6px 14px',
     borderRadius: '999px',
@@ -507,6 +696,36 @@ const styles = {
     background: '#f9fafb',
     color: '#111827',
     fontSize: '12px',
+    cursor: 'pointer',
+  },
+  successIcon: {
+    width: '48px',
+    height: '48px',
+    borderRadius: '999px',
+    background: '#dcfce7',
+    border: '2px solid #86efac',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    fontSize: '28px',
+    color: '#16a34a',
+    fontWeight: 600,
+    margin: '0 auto 16px',
+  },
+  successMessage: {
+    margin: 0,
+    fontSize: '14px',
+    color: '#374151',
+    textAlign: 'center',
+  },
+  modalSuccessPrimary: {
+    padding: '6px 14px',
+    borderRadius: '999px',
+    border: '1px solid #16a34a',
+    background: '#16a34a',
+    color: '#ffffff',
+    fontSize: '12px',
+    fontWeight: 600,
     cursor: 'pointer',
   },
 };

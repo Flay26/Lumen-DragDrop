@@ -255,7 +255,7 @@ const styles = {
     flexDirection: 'column',
     gap: '12px',
     marginTop: '8px',
-    alignItems: 'stretch',
+    alignItems: 'center',
   },
   card: {
     border: '1px solid #dbeafe',
