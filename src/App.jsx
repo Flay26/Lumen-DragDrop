@@ -239,7 +239,7 @@ export default function App() {
             return null;
           })()}
           <div>
-            <div style={styles.appName}>Smart Contract Creator</div>
+            <div style={styles.appName}>Lumen Smart Contract Creator</div>
             <div style={styles.appTagline}>
               Drag-and-drop your ERC-20 or ERC-721 contract in a friendly, code-free way.
             </div>
